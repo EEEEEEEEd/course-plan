@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Course Planner</title>
+<style>
+  body { font-family: Arial, sans-serif; display: flex; }
+  .left { width: 300px; border-right: 1px solid #aaa; padding: 10px; }
+  .semester { padding: 10px; border: 1px solid #666; margin-bottom: 10px; cursor: pointer; }
+  .semester.active { background: #f0f8ff; }
+  .right { flex: 1; padding: 10px; }
+  .course { padding: 5px; margin: 5px 0; background: #cce5ff; cursor: pointer; }
+  .course.disabled { background: #ddd; color: #666; cursor: not-allowed; }
+  .chosen { margin-top: 10px; padding: 10px; border: 1px solid #666; }
+  .chosenCourse { background: #d4edda; margin: 3px 0; padding: 3px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+  th, td { border: 1px solid #aaa; padding: 5px; text-align: center; }
+  th { background: #f0f0f0; }
+  .offered { background: red; }
+  #searchBar { width: 100%; padding: 6px; margin-bottom: 10px; }
+  button { margin-top: 10px; padding: 6px 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div class="left" id="semesterList"></div>
+
+<div class="right">
+  <h3 id="semesterTitle">Select a semester</h3>
+  <div id="availableCourses"></div>
+
+  <h3>Selected Courses by Semester</h3>
+  <div id="chosenCourses"></div>
+
+  <h3>Progress</h3>
+  <p><b>Credits Left:</b> <span id="creditsLeft">37</span></p>
+  <p><b>Courses Left:</b> <span id="coursesLeft">22</span></p>
+  <p><b>Courses Chosen:</b> <span id="coursesChosen">22</span></p>
+  <p><b>Common Courses Left:</b> <span id="commonLeft">2</span></p>
+  <p><b>Specialized Courses Left:</b> <span id="specialLeft">9</span></p>
+  <button onclick="exportCSV()">Export CSV</button>
+
+  <h3>All Courses List</h3>
+  <input type="text" id="searchBar" placeholder="Search by code or title...">
+  <table id="allCoursesTable">
+    <thead>
+      <tr>
+        <th>Code</th>
+        <th>Title</th>
+        <th>Credits</th>
+        <th>2025FA</th>
+        <th>2025WI</th>
+        <th>2026SP</th>
+        <th>2026FA</th>
+        <th>2026WI</th>
+        <th>2027SP</th>
+        <th>2027FA</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<script>
+//
+const courses = [
+  { code: "GCS600", title: "Introduction to Global Communication", credits: 3, offered: ["2026SP","2027SP"] },
+  { code: "GCS601", title: "Language, Culture, and Identity", credits: 3, offered: ["2025FA","2026FA","2027FA"] },
+  { code: "GCS602", title: "Contemporary Issues in a Global Context", credits: 3, offered: ["2026SP","2027SP"] },
+  { code: "GCS607", title: "Academic English for Global Professions", credits: 3, offered: ["2026FA","2027FA"] },
+  { code: "GCS608", title: "Introduction to Japanese Studies", credits: 3, offered: ["2026SP","2027SP"] },
+  { code: "GCS609", title: "Strategies for Intercultural Communication", credits: 3, offered: ["2026FA","2027FA"] },
+  { code: "GCS611", title: "Interpreting (English/Japanese) I", credits: 3, offered: ["2025FA","2026FA","2027FA"] },
+  { code: "GCP601", title: "Organizational Communication", credits: 3, offered: ["2026SP","2027SP"] },
+  { code: "GCP642", title: "Introduction to International Public Relations", credits: 3, offered: ["2025FA","2026FA","2027FA"] },
+  { code: "GCP643", title: "Introduction to International Journalism", credits: 3, offered: ["2026FA","2027FA"] },
+  { code: "GCP604", title: "Negotiation and Conflict Resolutions", credits: 3, offered: ["2026FA"] },
+  { code: "GCP613", title: "Debate and Discussion", credits: 3, offered: ["2026FA","2027FA"] },
+  { code: "GCP614", title: "Interpreting (English/Japanese) II", credits: 3, offered: ["2026SP","2027SP"] },
+  { code: "GCP620", title: "Discussing Global News", credits: 3, offered: ["2025FA","2026WI"] },
+  { code: "GCP622", title: "Communication and Organizational Behavior", credits: 3, offered: ["2025FA","2026SP","2027SP"] },
+  { code: "GCP624", title: "Leadership and Group Communication", credits: 3, offered: ["2025FA","2027FA"] },
+  { code: "GCP629", title: "Public Relations in a Global Context", credits: 3, offered: ["2025FA","2026FA","2027FA"] },
+  { code: "GCP633", title: "Digital Marketing and Advertising", credits: 3, offered: ["2026SP","2027SP"] },
+  { code: "GCP639", title: "Public Relations Practices", credits: 3, offered: ["2025WI"] },
+  { code: "GCP645", title: "Design of Graduation Project", credits: 1, offered: ["2025FA","2026SP","2026FA","2027SP","2027FA"] },
+  { code: "GCP649", title: "Scholarly Research and Paper", credits: 3, offered: ["2025FA","2026SP","2026FA","2027SP","2027FA"] },
+  { code: "GCP650", title: "Global Communication Practicum", credits: 3, offered: ["2025FA","2026SP","2026FA","2027SP","2027FA"] }
+];
+
+const semesters = ["2025FA","2025WI","2026SP","2026FA","2025WI","2027SP","2027FA"];
+const totalCredits = 37;
+let chosen = {};
+semesters.forEach(s => chosen[s] = []);
+
+// 
+function isTaken(code) {
+  return Object.values(chosen).flat().includes(code);
+}
+
+function canTakeAfter645(sem) {
+  const semIndex = semesters.indexOf(sem);
+  const taken645 = Object.entries(chosen).some(([s, list]) => list.includes("GCP645"));
+  if (!taken645) return false;
+  const sem645Index = semesters.findIndex(s => chosen[s].includes("GCP645"));
+  return semIndex > sem645Index;
+}
+
+// 
+function renderSemesters() {
+  const list = document.getElementById("semesterList");
+  list.innerHTML = "";
+  semesters.forEach(sem => {
+    const div = document.createElement("div");
+    div.className = "semester";
+    div.textContent = sem;
+    div.onclick = () => selectSemester(sem, div);
+    list.appendChild(div);
+  });
+}
+
+//
+function selectSemester(sem, elem) {
+  document.querySelectorAll(".semester").forEach(d => d.classList.remove("active"));
+  elem.classList.add("active");
+  document.getElementById("semesterTitle").textContent = "Available Courses for " + sem;
+  const avail = document.getElementById("availableCourses");
+  avail.innerHTML = "";
+  courses.filter(c => c.offered.includes(sem)).forEach(c => {
+    const div = document.createElement("div");
+    div.className = "course";
+    div.textContent = `${c.code} - ${c.title} (${c.credits}cr)`;
+
+    let disabled = false;
+    if (isTaken(c.code)) disabled = true;        // 已在其他学期选过
+    if (chosen[sem].includes(c.code)) disabled = true; // 已在本学期选过
+    if (sem === "2025FA" && ["GCP645","GCP649","GCP650"].includes(c.code)) disabled = true;
+    if (c.code === "GCP649" && isTaken("GCP650")) disabled = true;
+    if (c.code === "GCP650" && isTaken("GCP649")) disabled = true;
+    if ((c.code === "GCP649" || c.code === "GCP650") && !canTakeAfter645(sem)) disabled = true;
+
+    if (disabled) {
+      div.classList.add("disabled");
+    } else {
+      div.onclick = () => addCourse(sem, c.code);
+    }
+    avail.appendChild(div);
+  });
+  renderChosen();
+}
+
+//
+function addCourse(sem, code) {
+  if (!chosen[sem].includes(code)) {
+    chosen[sem].push(code);
+    renderChosen();
+    selectSemester(sem, document.querySelector(".semester.active"));
+  }
+}
+
+//
+function removeCourse(sem, code) {
+  chosen[sem] = chosen[sem].filter(c => c !== code);
+  renderChosen();
+  if (document.querySelector(".semester.active")) {
+    selectSemester(document.querySelector(".semester.active").textContent, document.querySelector(".semester.active"));
+  }
+}
+
+//
+function renderChosen() {
+  const container = document.getElementById("chosenCourses");
+  container.innerHTML = "";
+  semesters.forEach(sem => {
+    const block = document.createElement("div");
+    block.className = "chosen";
+    block.innerHTML = `<b>${sem}</b><br>`;
+    if (chosen[sem].length) {
+      chosen[sem].forEach(code => {
+        const cDiv = document.createElement("div");
+        cDiv.className = "chosenCourse";
+        const c = courses.find(cc => cc.code===code);
+        cDiv.textContent = `${c.code} - ${c.title} (${c.credits}cr)`;
+        cDiv.onclick = () => removeCourse(sem, code);
+        block.appendChild(cDiv);
+      });
+    } else {
+      block.innerHTML += "No courses yet";
+    }
+    container.appendChild(block);
+  });
+
+  //
+  let usedCredits = 0;
+  let common = 0, specialized = 0;
+  Object.values(chosen).flat().forEach(code => {
+    const c = courses.find(cc => cc.code===code);
+    if (c) {
+      usedCredits += c.credits;
+      if (c.code.startsWith("GCS")) {
+        if (common < 2) common++;
+        else if (["GCS600","GCS601","GCS602","GCS607","GCS609","GCP614"].includes(c.code)) specialized++;
+      } else if (["GCP645","GCP649","GCP650"].includes(c.code)) {
+        // 特殊不算在普通专业课
+      } else {
+        specialized++;
+      }
+    }
+  });
+  document.getElementById("creditsLeft").textContent = totalCredits - usedCredits;
+  document.getElementById("coursesLeft").textContent = courses.length - Object.values(chosen).flat().length;
+  document.getElementById("coursesChosen").textContent = Object.values(chosen).flat().length;
+  document.getElementById("commonLeft").textContent = 2 - common;
+  document.getElementById("specialLeft").textContent = 9 - specialized;
+}
+
+//
+function renderAllCoursesTable(filter="") {
+  const tbody = document.querySelector("#allCoursesTable tbody");
+  tbody.innerHTML = "";
+  courses
+    .filter(c => c.code.toLowerCase().includes(filter) || c.title.toLowerCase().includes(filter))
+    .forEach(c => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${c.code}</td>
+      <td>${c.title}</td>
+      <td>${c.credits}</td>
+      ${semesters.map(s => `<td class="${c.offered.includes(s) ? 'offered' : ''}"></td>`).join("")}
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+//
+function exportCSV() {
+  let rows = [["Semester","Code","Title","Credits"]];
+  semesters.forEach(sem => {
+    chosen[sem].forEach(code => {
+      const c = courses.find(cc => cc.code===code);
+      rows.push([sem, c.code, c.title, c.credits]);
+    });
+  });
+  let csvContent = rows.map(r => r.join(",")).join("\n");
+  let blob = new Blob([csvContent], {type:"text/csv"});
+  let url = URL.createObjectURL(blob);
+  let a = document.createElement("a");
+  a.href = url;
+  a.download = "selected_courses.csv";
+  a.click();
+}
+
+document.getElementById("searchBar").addEventListener("input", e => {
+  renderAllCoursesTable(e.target.value.toLowerCase());
+});
+
+renderSemesters();
+renderChosen();
+renderAllCoursesTable();
+</script>
+
+</body>
+</html>
